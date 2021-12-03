@@ -1,0 +1,6 @@
+*Step 1: Change host IP in master.py to IP of remote that you want to connect.
+*Step 2: Run file server-config.sh to config info to connect to CloudKarafka broker.
+	-- If you run this project in Window, please change 'export' to 'set' in server-config.sh and 		change .sh to .bat
+	-- You can use your Karafka broker by change info into file server-config.sh
+*Step 3: Run slave node first, then run master node and you can see sensor data created in CloudKarafka broker interface.
+*Step 4: Press 'stop' to terminal if you want to stop creating data in both master-slaves node.

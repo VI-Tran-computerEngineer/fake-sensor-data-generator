@@ -121,8 +121,7 @@ def createDataAndSendDataToServer(Type, duration):
 
     fake.add_provider(MyProvider)
     while True:
-        for i in range(10):
-            time.sleep(2)
+        time.sleep(20)
         if Type == 0:
             msg = str(fake.temperature(duration))
         elif Type == 1:
@@ -130,7 +129,7 @@ def createDataAndSendDataToServer(Type, duration):
         else:
             msg = str(fake.lightIntensity(duration))
         try:
-            p.produce(topic, msg, callback=delivery_callback, partition=Type)
+            p.produce(topic, msg, partition=Type)#callback=delivery_callback, partition=Type)
         except BufferError as e:
             sys.stderr.write('%% Local producer queue is full (%d messages awaiting delivery): try again\n' %
                              len(p))
@@ -159,27 +158,45 @@ if __name__ == '__main__':
     # send the filename and filesize
     s.send(f"{filename}{SEPARATOR}{filesize}{SEPARATOR}10 5, 5,".encode())
     # start sending the file
-    progress = tqdm.tqdm(range(filesize), f"Sending {filename}", unit="B", unit_scale=True, unit_divisor=1024)
-    with open(filename, "rb") as f:
-        while True:
-            # read the bytes from the file
-            bytes_read = f.read(BUFFER_SIZE)
-            if not bytes_read:
-                # file transmitting is done
-                break
-            # we use sendall to assure transimission in 
-            # busy networks
-            s.sendall(bytes_read)
-            # update the progress bar
-            progress.update(len(bytes_read))
+    with tqdm.tqdm(range(filesize), f"Sending {filename}", unit="B", unit_scale=True, unit_divisor=1024) as progress:
+        with open(filename, "rb") as f:
+            while True:
+                # read the bytes from the file
+                bytes_read = f.read(BUFFER_SIZE)
+                if not bytes_read:
+                    # file transmitting is done
+                    break
+                # we use sendall to assure transimission in 
+                # busy networks
+                s.sendall(bytes_read)
+                # update the progress bar
+                progress.update(len(bytes_read))
+
     # close the socket
     s.close()
-    time.sleep(1)
-    #runningParameters =[[10, 5], [10], [10]]
+    # create the client socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((host, port))
+    runningParameters =[[10, 5], [10], [10]]
     for i in range(len(runningParameters)):
         for j in runningParameters[i]:
-            threading.Thread(target= createDataAndSendDataToServer, args= (i, j)).start()
+            threading.Thread(target= createDataAndSendDataToServer, args= (i, j), daemon=True).start()
 
-    for i in range(10):
-        time.sleep(2)
+    try:
+        while True:
+            userInput = input("press \"stop\" if you want to stop the program: ")
+            if (userInput == "stop"):
+                print("Program exited due to stop command")
+                s.send("stop".encode())
+                # close the socket
+                s.close()
+                exit(0)
+            else:
+                print("Such command is not exist")
+    except KeyboardInterrupt:
+        print("Program exited due to KeyboardInterrupt")
+        s.send("stop".encode())
+        # close the socket
+        s.close()
+        exit(0)
 
