@@ -65,6 +65,8 @@ try:
     client_socket.close()
     # close the server socket
     s.close()
+    os.remove(f'./{filename}')
+    exit(0)
 
 except KeyboardInterrupt:
     print("Program exited due to KeyboardInterrupt")
@@ -72,4 +74,5 @@ except KeyboardInterrupt:
     client_socket.close()
     # close the socket
     s.close()
+    os.remove(f'./{filename}')
     exit(0)

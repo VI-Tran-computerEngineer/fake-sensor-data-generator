@@ -15,43 +15,41 @@ fake = Faker()
 
 denta_H_vap = 40660 # (J/mol)
 R = 8.314 # J/(mol*K)
-sampleRate = 1 # one sample/minute
+samplePeriod = 1 # 1 minute/sample
 
 # create new provider class
 class MyProvider(BaseProvider):
     # average temperature
     def temperature(self, duration, offset = 0) -> float:
-        maxTemp= 40 # Maximum temperature
-        minTemp= 25 # Minimum temperature
-        minutesInOneDay = 24*60;
-        u_0AM = 26.5 # mean of temperature
-        denta_0AM = 0.1 # standard deviation
-        u_changeAmount = (maxTemp - minTemp) / (minutesInOneDay)
-
+        maxTemp= 40 # Maximum temperature at 12:00 AM
+        minTemp= 25 # Minimum temperature at 03:00 AM
+        u_03AM = minTemp # mean of temperature at 00:00 AM
+        temperature_denta = 0.1 #  standard deviation of temperature
+        u_changeAmountFrom3AMTo12noon = (maxTemp - minTemp) / (9*60) # > 0
+        u_changeAmountFrom12noonTo3AM = (minTemp - maxTemp) / (15*60) # < 0
 
         date = str(datetime.datetime.now())
         hour = date[11:16]
-        jump = int(hour[0:2])*60 + int(hour[3:5]) + offset
-        if jump <= 180:
-            u = u_0AM + (-jump)*u_changeAmount
-        elif jump <= 720:
-            u = u_0AM + (jump-180)*u_changeAmount
+        jump = int(hour[0:2])*60 + int(hour[3:5]) + offset - 180
+        if jump < 0:
+            jump += 24*60
+
+        if jump <= 9*60:
+            u = u_03AM + jump*u_changeAmountFrom3AMTo12noon
         else:
-            u = u_0AM + (720*2-180-jump)*u_changeAmount
+            u = maxTemp + (jump - 9*60)*u_changeAmountFrom12noonTo3AM
 
         dataImediateSum = 0
 
-        for i in range(int(duration/sampleRate) + 1):
-            dataImediateSum += random.normal(u, denta_0AM)
-            jump += 1
-            if jump <= 180 :
-                u -= u_changeAmount
-            elif jump <= 720:
-                u += u_changeAmount
+        for i in range(int(duration/samplePeriod) + 1):
+            dataImediateSum += random.normal(u, temperature_denta)
+            jump += samplePeriod
+            if jump <= 9*60:
+                u += u_changeAmountFrom3AMTo12noon
             else:
-                u -= u_changeAmount
+                u += u_changeAmountFrom12noonTo3AM
 
-        data = dataImediateSum / (duration/sampleRate+1)
+        data = dataImediateSum / (duration/samplePeriod+1)
         return data
 
     def huminidy(self, duration) -> float:
@@ -59,14 +57,14 @@ class MyProvider(BaseProvider):
         refVapourPresure = 83 # reference vapour pressure in TP HCM at 10h15 03/11/2021 corresponding to the temperature above(%)
 
         dataImediateSum = 0
-        for i in range(int(duration/sampleRate) + 1):
-            currentTemperature = self.temperature(0, i)
+        for i in range(int(duration/samplePeriod) + 1):
+            currentTemperature = self.temperature(0, i*samplePeriod)
             currentVapour = refVapourPresure / math.exp(
                 (denta_H_vap / R) * (1 / (currentTemperature+273) - 1 / (refTemperature+273)))
-            #print(currentVapour)
+            
             dataImediateSum += currentVapour
 
-        data = dataImediateSum/(duration/sampleRate + 1)
+        data = dataImediateSum/(duration/samplePeriod + 1)
         return data
 
     def lightIntensity(self, duration) -> float:
@@ -80,7 +78,7 @@ class MyProvider(BaseProvider):
         u_refLightIntensityRelative = 1/(dentaTime*math.sqrt(2*math.pi))
 
         dataImediateSum = 0
-        for i in range(int(duration / sampleRate) + 1):
+        for i in range(int(duration / samplePeriod) + 1):
             jump = abs(12 * 60 - (int(hour[0:2]) * 60 + int(hour[3:5]) + i))
             u_currentLightIntensityRelative = 1 / (dentaTime * math.sqrt(2 * math.pi)) * math.exp(
                 -0.5 * pow(jump / dentaTime, 2))
@@ -89,7 +87,7 @@ class MyProvider(BaseProvider):
             dataImediateSum += random.normal(u_currentLightIntensity, dentaLight)
 
 
-        data = dataImediateSum / (duration / sampleRate + 1)
+        data = dataImediateSum / (duration / samplePeriod + 1)
         return data
 
 def createDataAndSendDataToServer(Type, duration):
@@ -117,7 +115,7 @@ def createDataAndSendDataToServer(Type, duration):
 
     fake.add_provider(MyProvider)
     while True:
-        time.sleep(10)
+        time.sleep(20)
         if Type == 0:
             msg = str(fake.temperature(duration))
         elif Type == 1:
@@ -125,7 +123,7 @@ def createDataAndSendDataToServer(Type, duration):
         else:
             msg = str(fake.lightIntensity(duration))
         try:
-            p.produce(topic, msg, callback=delivery_callback, partition=Type)
+            p.produce(topic, msg, partition=Type)#callback=delivery_callback, partition=Type)
         except BufferError as e:
             sys.stderr.write('%% Local producer queue is full (%d messages awaiting delivery): try again\n' %
                              len(p))
